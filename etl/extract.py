@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
-
 def get_balance_sheet_all_yf(ticker_str: str) -> dict:
     tk = yf.Ticker(ticker_str)
 
