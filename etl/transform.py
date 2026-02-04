@@ -1,8 +1,12 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from datetime import datetime, timezone
 
 
+# ======================================================
+# Utilitário
+# ======================================================
 def get_first_non_null_row(df_yf, row_names):
     if df_yf is None or df_yf.empty:
         return np.nan
@@ -18,75 +22,290 @@ def get_first_non_null_row(df_yf, row_names):
     return np.nan
 
 
+# ======================================================
+# Transformação principal
+# ======================================================
 def transform_financials(df: pd.DataFrame) -> pd.DataFrame:
 
-    # =========================
-    # Balanço
-    # =========================
-    df["Ativo Total"]        = df.get("BS_Total_Assets")
-    df["Passivo Total"]      = df.get("BS_Total_Liabilities_Net_Minority_Interest")
-    df["Patrimônio Líquido"] = df.get("BS_Stockholders_Equity")
+    print("Transformando indicadores financeiros...")
 
-    df["Ativo Circulante"]   = df.get("BS_Current_Assets")
-    df["Passivo Circulante"] = df.get("BS_Current_Liabilities")
+    df = df.copy()
 
-    df["Ativo Não Circulante"]   = df["Ativo Total"]   - df["Ativo Circulante"]
-    df["Passivo Não Circulante"] = df["Passivo Total"] - df["Passivo Circulante"]
+    # ==================================================
+    # NORMALIZAÇÃO DE COLUNAS BÁSICAS
+    # ==================================================
+    if "Ticker" in df.columns:
+        df.rename(columns={"Ticker": "ticker"}, inplace=True)
 
-    df["Dívida Total"] = df.get("BS_Total_Debt")
+    if "Data_Referencia" in df.columns:
+        df.rename(columns={"Data_Referencia": "Data_Referencia"}, inplace=True)
 
-    cash_cols = [
+    # ==================================================
+    # PADRONIZAÇÃO DO BALANÇO
+    # ==================================================
+    BALANCE_MAP = {
+        "BS_Total_Assets": "Ativo Total",
+        "BS_Total_Liabilities_Net_Minority_Interest": "Passivo Total",
+        "BS_Stockholders_Equity": "Patrimônio Líquido",
+        "BS_Current_Assets": "Ativo Circulante",
+        "BS_Current_Liabilities": "Passivo Circulante",
+        "BS_Total_Debt": "Dívida Total",
+    }
+
+    for raw, final in BALANCE_MAP.items():
+        if raw in df.columns:
+            df[final] = df[raw]
+
+    # ==================================================
+    # CAIXA TOTAL (COALESCE SEGURO)
+    # ==================================================
+    CASH_COLS = [
         "BS_Cash_Cash_Equivalents_And_Short_Term_Investments",
         "BS_Cash_And_Cash_Equivalents",
         "BS_Cash_Equivalents",
         "BS_Cash_Financial",
     ]
 
-    df["Caixa Total"] = df[cash_cols].bfill(axis=1).iloc[:, 0]
+    cash_existentes = [c for c in CASH_COLS if c in df.columns]
+
+    if cash_existentes:
+        df["Caixa Total"] = (
+            df[cash_existentes]
+            .bfill(axis=1)
+            .iloc[:, 0]
+        )
+    else:
+        df["Caixa Total"] = np.nan
+
+    # ==================================================
+    # DERIVADOS DO BALANÇO
+    # ==================================================
+    df["Ativo Não Circulante"] = df["Ativo Total"] - df["Ativo Circulante"]
+    df["Passivo Não Circulante"] = df["Passivo Total"] - df["Passivo Circulante"]
     df["Dívida Líquida"] = df["Dívida Total"] - df["Caixa Total"]
 
-    # =========================
-    # DRE
-    # =========================
-    df["EBIT"] = np.nan
-    df["EBITDA"] = np.nan
-    df["EBITDA Ajustado"] = np.nan
-    df["Receita Líquida"] = np.nan
-    df["Despesa de Juros"] = np.nan
-    df["Lucro Líquido"] = np.nan
+    # ==================================================
+    # DRE (CACHE POR TICKER)
+    # ==================================================
+    dre_cache = {}
 
-    for i, row in df.iterrows():
-        ticker = str(row.get("Ticker", "")).strip()
+    for ticker in df["ticker"].dropna().unique():
+
+        ticker = str(ticker).strip()
         if not ticker:
             continue
 
         try:
+            print(f"Baixando DRE: {ticker}")
             t = yf.Ticker(ticker)
             fin = t.financials
 
-            df.at[i, "EBIT"] = get_first_non_null_row(fin, ["EBIT", "Operating Income"])
-            df.at[i, "EBITDA"] = get_first_non_null_row(fin, ["EBITDA"])
-            df.at[i, "EBITDA Ajustado"] = get_first_non_null_row(fin, ["Normalized EBITDA"])
-            df.at[i, "Receita Líquida"] = get_first_non_null_row(fin, ["Total Revenue", "Revenue"])
-            df.at[i, "Despesa de Juros"] = get_first_non_null_row(fin, ["Interest Expense"])
-            df.at[i, "Lucro Líquido"] = get_first_non_null_row(fin, ["Net Income"])
+            dre_cache[ticker] = {
+                "EBIT": get_first_non_null_row(fin, ["EBIT", "Operating Income"]),
+                "EBITDA": get_first_non_null_row(fin, ["EBITDA"]),
+                "EBITDA Ajustado": get_first_non_null_row(fin, ["Normalized EBITDA"]),
+                "Receita Líquida": get_first_non_null_row(fin, ["Total Revenue", "Revenue"]),
+                "Despesa de Juros": get_first_non_null_row(fin, ["Interest Expense"]),
+                "Lucro Líquido": get_first_non_null_row(fin, ["Net Income"]),
+            }
 
         except Exception as e:
             print(f"Erro no ticker {ticker}: {e}")
+            dre_cache[ticker] = {}
 
-    # =========================
-    # Indicadores
-    # =========================
+    for col in [
+        "EBIT",
+        "EBITDA",
+        "EBITDA Ajustado",
+        "Receita Líquida",
+        "Despesa de Juros",
+        "Lucro Líquido",
+    ]:
+        df[col] = df["ticker"].map(
+            lambda t: dre_cache.get(str(t).strip(), {}).get(col, np.nan)
+        )
+
+    # ==================================================
+    # INDICADORES FINANCEIROS
+    # ==================================================
+    def safe_div(n, d):
+        return np.where((d == 0) | pd.isna(d), np.nan, n / d)
+
     ebitda_base = df["EBITDA Ajustado"].where(
         df["EBITDA Ajustado"].notna(),
         df["EBITDA"]
     )
 
-    df["Liquidez Corrente"] = df["Ativo Circulante"] / df["Passivo Circulante"]
-    df["ICJ"] = df["EBIT"] / df["Despesa de Juros"].abs()
-    df["Dívida Líquida / EBITDA"] = df["Dívida Líquida"] / ebitda_base
-    df["Endividamento"] = df["Dívida Total"] / df["Ativo Total"]
-    df["Margem EBITDA"] = ebitda_base / df["Receita Líquida"]
-    df["ROE"] = df["Lucro Líquido"] / df["Patrimônio Líquido"]
+    df["Liquidez Corrente"] = safe_div(
+        df["Ativo Circulante"],
+        df["Passivo Circulante"]
+    )
+
+    df["ICJ"] = safe_div(
+        df["EBIT"],
+        df["Despesa de Juros"].abs()
+    )
+
+    df["ICJ Ajustado"] = safe_div(
+        ebitda_base,
+        df["Despesa de Juros"].abs()
+    )
+
+    df["Dívida Líquida / EBITDA"] = safe_div(
+        df["Dívida Líquida"],
+        df["EBITDA"]
+    )
+
+    df["Dívida Líquida / EBITDA Ajustado"] = safe_div(
+        df["Dívida Líquida"],
+        ebitda_base
+    )
+
+    df["Endividamento"] = safe_div(
+        df["Dívida Total"],
+        df["Ativo Total"]
+    )
+
+    df["Endividamento Ajustado"] = safe_div(
+        df["Dívida Líquida"],
+        df["Ativo Total"]
+    )
+
+    df["Margem EBITDA"] = safe_div(
+        ebitda_base,
+        df["Receita Líquida"]
+    )
+
+    df["ROE"] = safe_div(
+        df["Lucro Líquido"],
+        df["Patrimônio Líquido"]
+    )
+
+    df["ROE Ajustado"] = safe_div(
+        df["Lucro Líquido"],
+        df["Patrimônio Líquido"].abs()
+    )
+    
+    # ==================================================
+    # SELEÇÃO FINAL (PADRÃO DA SUA ETL)
+    # ==================================================
+    COLUNAS_FINAIS = [
+        "Data_Referencia",
+        "Empresa",
+        "ticker",
+
+        "Liquidez Corrente",
+        "ICJ",
+        "ICJ Ajustado",
+        "Dívida Líquida / EBITDA",
+        "Dívida Líquida / EBITDA Ajustado",
+        "Endividamento",
+        "Endividamento Ajustado",
+        "Margem EBITDA",
+        "ROE",
+        "ROE Ajustado",
+
+        "Ativo Total",
+        "Passivo Total",
+        "Patrimônio Líquido",
+        "Ativo Circulante",
+        "Passivo Circulante",
+        "Ativo Não Circulante",
+        "Passivo Não Circulante",
+        "Dívida Total",
+        "Caixa Total",
+        "Dívida Líquida",
+
+        "EBIT",
+        "EBITDA",
+        "EBITDA Ajustado",
+        "Receita Líquida",
+        "Despesa de Juros",
+        "Lucro Líquido",
+    ]
+
+    df = df[[c for c in COLUNAS_FINAIS if c in df.columns]]
+
+    # ==================================================
+    # PADRONIZAÇÃO FINAL: 2 CASAS DECIMAIS
+    # ==================================================
+    COLUNAS_NUMERICAS = df.select_dtypes(include=[np.number]).columns
+
+    for col in COLUNAS_NUMERICAS:
+        df[col] = (
+            pd.to_numeric(df[col], errors="coerce")
+            .round(2)
+        )
+        
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+    return df
+
+def transform_tickers_metadata(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Cria a base auxiliar de tickers (metadata),
+    contendo apenas atributos cadastrais da empresa.
+    """
+
+    print("Transformando base auxiliar de tickers (metadata)...")
+
+    df = df.copy()
+    print(df.columns)
+    # ==================================================
+    # NORMALIZAÇÃO DE NOMES
+    # ==================================================
+    RENAME_MAP = {
+        "Ticker": "ticker",
+        "Empresa": "empresa",
+        "Setor": "setor",
+        "Subsetor": "subsetor",
+        "Market Cap": "market_cap",
+        "Preco Atual": "preco",
+    }
+
+    df.rename(columns={k: v for k, v in RENAME_MAP.items() if k in df.columns},
+              inplace=True)
+
+    # ==================================================
+    # SELEÇÃO DAS COLUNAS AUXILIARES
+    # ==================================================
+    COLUNAS_METADATA = [
+        "ticker",
+        "empresa",
+        "setor",
+        "subsetor",
+        "market_cap",
+        "preco",
+    ]
+
+    df = df[[c for c in COLUNAS_METADATA if c in df.columns]]
+
+    # ==================================================
+    # DEDUPLICAÇÃO (1 REGISTRO POR TICKER)
+    # ==================================================
+    if "ticker" not in df.columns:
+        raise ValueError("❌ Coluna 'ticker' é obrigatória para metadata")
+
+    df = (
+        df
+        .dropna(subset=["ticker"])
+        .drop_duplicates(subset=["ticker"])
+    )
+
+    # ==================================================
+    # DATA DE ATUALIZAÇÃO
+    # ==================================================
+    df["data_atualizacao"] = datetime.now(timezone.utc).isoformat()
+
+    # ==================================================
+    # LIMPEZA PARA POSTGRES / SUPABASE
+    # ==================================================
+    df.replace(
+        [np.inf, -np.inf, pd.NA, pd.NaT],
+        None,
+        inplace=True
+    )
+
+    df = df.where(pd.notna(df), None)
 
     return df
