@@ -191,7 +191,7 @@ def transform_financials(df: pd.DataFrame) -> pd.DataFrame:
     # ==================================================
     COLUNAS_FINAIS = [
         "Data_Referencia",
-        "Empresa",
+        "empresa",
         "ticker",
 
         "Liquidez Corrente",
@@ -238,74 +238,5 @@ def transform_financials(df: pd.DataFrame) -> pd.DataFrame:
         )
         
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-    return df
-
-def transform_tickers_metadata(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Cria a base auxiliar de tickers (metadata),
-    contendo apenas atributos cadastrais da empresa.
-    """
-
-    print("Transformando base auxiliar de tickers (metadata)...")
-
-    df = df.copy()
-    print(df.columns)
-    # ==================================================
-    # NORMALIZAÇÃO DE NOMES
-    # ==================================================
-    RENAME_MAP = {
-        "Ticker": "ticker",
-        "Empresa": "empresa",
-        "Setor": "setor",
-        "Subsetor": "subsetor",
-        "Market Cap": "market_cap",
-        "Preco Atual": "preco",
-    }
-
-    df.rename(columns={k: v for k, v in RENAME_MAP.items() if k in df.columns},
-              inplace=True)
-
-    # ==================================================
-    # SELEÇÃO DAS COLUNAS AUXILIARES
-    # ==================================================
-    COLUNAS_METADATA = [
-        "ticker",
-        "empresa",
-        "setor",
-        "subsetor",
-        "market_cap",
-        "preco",
-    ]
-
-    df = df[[c for c in COLUNAS_METADATA if c in df.columns]]
-
-    # ==================================================
-    # DEDUPLICAÇÃO (1 REGISTRO POR TICKER)
-    # ==================================================
-    if "ticker" not in df.columns:
-        raise ValueError("❌ Coluna 'ticker' é obrigatória para metadata")
-
-    df = (
-        df
-        .dropna(subset=["ticker"])
-        .drop_duplicates(subset=["ticker"])
-    )
-
-    # ==================================================
-    # DATA DE ATUALIZAÇÃO
-    # ==================================================
-    df["data_atualizacao"] = datetime.now(timezone.utc).isoformat()
-
-    # ==================================================
-    # LIMPEZA PARA POSTGRES / SUPABASE
-    # ==================================================
-    df.replace(
-        [np.inf, -np.inf, pd.NA, pd.NaT],
-        None,
-        inplace=True
-    )
-
-    df = df.where(pd.notna(df), None)
 
     return df

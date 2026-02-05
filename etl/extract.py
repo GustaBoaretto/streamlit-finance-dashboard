@@ -113,8 +113,8 @@ def extract_empresas(empresas_df: pd.DataFrame) -> pd.DataFrame:
     frames = []
 
     for _, row in empresas_df.iterrows():
-        empresa = row["Empresa"]
-        ticker = row["Ticker"]
+        empresa = row["empresa"]
+        ticker = row["ticker"]
 
         print(f"📥 Extraindo {empresa} ({ticker})...")
 
@@ -131,7 +131,7 @@ def extract_empresas(empresas_df: pd.DataFrame) -> pd.DataFrame:
             if df.empty:
                 continue
 
-            df["Empresa"] = empresa
+            df["empresa"] = empresa
             frames.append(df)
 
         except Exception as e:

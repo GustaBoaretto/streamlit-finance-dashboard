@@ -1,6 +1,6 @@
 from data.empresas import get_empresas_df
 from etl.extract import extract_empresas
-from etl.transform import transform_financials, transform_tickers_metadata
+from etl.transform import transform_financials
 from etl.load_supabase import upload_dataframe, get_supabase_client
 
 from pathlib import Path
@@ -71,76 +71,52 @@ def prepare_df_for_json(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def upsert_tickers_metadata(df: pd.DataFrame):
+def sync_tickers_metadata(empresas_df: pd.DataFrame):
     print("🧩 Sincronizando tickers_metadata...")
 
-    # ==================================================
-    # COLUNAS ESPERADAS NA TABELA AUXILIAR
-    # ==================================================
-    expected_cols = [
-        "ticker",
-        "empresa",
-        "setor",
-        "subsetor",
-        "market_cap",
-        "preco",
-    ]
-
-    # ==================================================
-    # VALIDAÇÃO MÍNIMA
-    # ==================================================
-    if "ticker" not in df.columns:
-        raise ValueError("❌ Coluna obrigatória 'ticker' não encontrada no DataFrame")
-
-    # usa apenas as colunas que realmente existem
-    cols_present = [c for c in expected_cols if c in df.columns]
-
-    if not cols_present:
-        raise ValueError("❌ Nenhuma coluna válida encontrada para tickers_metadata")
-
-    # ==================================================
-    # SELEÇÃO + DEDUPLICAÇÃO
-    # ==================================================
-    metadata_df = (
-        df[cols_present]
-        .dropna(subset=["ticker"])
-        .drop_duplicates(subset=["ticker"])
-        .copy()
-    )
-
-    # ==================================================
-    # DATA DE ATUALIZAÇÃO (UTC / JSON SAFE)
-    # ==================================================
-    metadata_df["data_atualizacao"] = datetime.now(timezone.utc).isoformat()
-
-    # ==================================================
-    # LIMPEZA FINAL (POSTGRES / SUPABASE SAFE)
-    # ==================================================
-    metadata_df.replace(
-        [np.inf, -np.inf, pd.NA, pd.NaT],
-        None,
-        inplace=True
-    )
-
-    metadata_df = metadata_df.where(pd.notna(metadata_df), None)
-
-    records = metadata_df.to_dict(orient="records")
-
-    if not records:
-        print("⚠️ Nenhum registro válido para sincronizar")
-        return
-
-    # ==================================================
-    # UPSERT NO SUPABASE
-    # ==================================================
     supabase = get_supabase_client()
 
-    supabase.table("tickers_metadata").upsert(
-        records,
-        on_conflict="ticker"
-    ).execute()
+    empresas_df = empresas_df.copy()
+    empresas_df.columns = empresas_df.columns.str.lower()
 
-    print(f"✅ {len(records)} tickers sincronizados em tickers_metadata")
+    for _, row in empresas_df.iterrows():
+
+        ticker = row["ticker"]
+
+        existing = (
+            supabase.table("tickers_metadata")
+            .select("*")
+            .eq("ticker", ticker)
+            .execute()
+        )
+
+        # prepara dict serializável
+        new_row = {
+            k: (v.isoformat() if isinstance(v, pd.Timestamp) else v)
+            for k, v in row.to_dict().items()
+        }
+
+        # INSERT
+        if not existing.data:
+            supabase.table("tickers_metadata").insert(new_row).execute()
+            continue
+
+        current = existing.data[0]
+
+        changed = any([
+            current["empresa"] != row["empresa"],
+            current["setor"] != row["setor"],
+            current["tipo"] != row["tipo"],
+        ])
+
+        # UPDATE se mudou
+        if changed:
+            supabase.table("tickers_metadata")\
+                .update(new_row)\
+                .eq("ticker", ticker)\
+                .execute()
+
+    print("✅ Sincronização concluída")
 
 # ============================
 # Pipeline
@@ -159,8 +135,6 @@ df_raw = extract_empresas(empresas_df)
 print("🔧 Transformando indicadores...")
 df_final = transform_financials(df_raw)
 
-# 2. Transform para a base auxiliar
-df_final_ts = transform_tickers_metadata(df_raw)
 # ============================
 # Normalização de colunas
 # ============================
@@ -244,7 +218,7 @@ upload_dataframe(
     table_name=TABLE_NAME
 )
 
-upsert_tickers_metadata(df_final_ts)
+sync_tickers_metadata(empresas_df)
 
 print("✅ Upload concluído!")
 
