@@ -1,28 +1,30 @@
-name: CI Pipeline
+name: ETL Pipeline
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
 
 jobs:
-  build:
+  run-etl:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Instalar dependências
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Rodar testes
+      # cria o arquivo .env
+      - name: Criar .env
         run: |
-          pytest
+          echo "${{ secrets.KEYS_URLS }}" > .env
+
+      - name: Rodar ETL
+        run: python -m etl.run_etl
