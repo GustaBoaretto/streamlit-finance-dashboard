@@ -2,7 +2,7 @@ import feedparser
 from urllib.parse import quote
 
 
-def get_news(query: str, limit: int = 5):
+def get_news(query: str, limit: int = 20):
     """
     Busca notícias no Google News RSS.
     """
@@ -18,7 +18,8 @@ def get_news(query: str, limit: int = 5):
             "title": entry.title,
             "link": entry.link,
             "published": entry.get("published", ""),
-            "source": entry.get("source", {}).get("title", "")
+            "source": entry.get("source", {}).get("title", ""),
+            "summary": entry.get("description", "")
         })
 
     return noticias

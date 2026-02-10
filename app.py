@@ -2,23 +2,42 @@ import os
 import streamlit as st
 import pandas as pd
 from supabase import create_client
-from utils.news import get_news
 from dotenv import load_dotenv
 
 # -----------------------
 # Configuração da página
 # -----------------------
-st.set_page_config(
-    page_title="📊 Finance Dashboard",
-    layout="wide"
-)
+st.set_page_config(page_title="Perfil Estratégico de Mercado", layout="wide")
 
-st.title("📊 Relatório Financeiro por Setor")
+def apply_custom_theme():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background: linear-gradient(
+                135deg,
+                #006341 0%,
+                #009c3b 30%,
+                #ffdf00 65%,
+                #ffffff 100%
+            );
+        }
+
+        .block-container {
+            background-color: rgba(255, 255, 255, 0.90);
+            padding: 2rem;
+            border-radius: 12px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+apply_custom_theme()
 
 # -----------------------
-# Supabase connection
+# Secrets
 # -----------------------
-
 load_dotenv()
 
 def get_secret(key):
@@ -29,144 +48,83 @@ def get_secret(key):
 
 SUPABASE_URL = get_secret("SUPABASE_URL")
 SUPABASE_KEY = get_secret("SUPABASE_SERVICE_KEY")
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -----------------------
-# Leitura dos dados
+# Load data
 # -----------------------
 @st.cache_data(ttl=3600)
 def load_data():
-
-    response = (
-        supabase
-        .table("vw_financials_enriched")
-        .select("*")
-        .execute()
-    )
-
+    response = supabase.table("vw_financials_enriched").select("*").execute()
     df = pd.DataFrame(response.data)
-
-    # padronização nomes para compatibilidade com dashboard
-    df.rename(columns={
-        "empresa": "Empresa",
-        "setor": "Setor",
-        "roe": "ROE",
-        "margem_ebitda": "Margem EBITDA",
-        "liquidez_corrente": "Liquidez Corrente",
-        "endividamento": "Endividamento"
-    }, inplace=True)
-
+    df["data_referencia"] = pd.to_datetime(df["data_referencia"])
     return df
 
 df = load_data()
 
 # -----------------------
-# Sidebar - Filtros
+# HEADER
 # -----------------------
-st.sidebar.header("🎯 Filtros")
+st.title("📊 Perfil Estratégico de Mercado")
+st.caption("Plataforma de monitoramento financeiro, comparação de empresas e análise estratégica baseada em dados")
 
-setores = st.sidebar.multiselect(
-    "Setor",
-    options=sorted(df["Setor"].dropna().unique())
-)
-
-empresas = st.sidebar.multiselect(
-    "Empresa",
-    options=sorted(df["Empresa"].dropna().unique())
-)
-
-df_filtro = df.copy()
-
-if setores:
-    df_filtro = df_filtro[df_filtro["Setor"].isin(setores)]
-
-
-if empresas:
-    df_filtro = df_filtro[df_filtro["Empresa"].isin(empresas)]
+st.divider()
 
 # -----------------------
-# KPIs
+# SOBRE O PROJETO
 # -----------------------
-st.subheader("📌 Indicadores Médios")
+st.header("Sobre o projeto")
 
-col1, col2, col3, col4, col5 = st.columns(5)
+st.markdown("""
+Este projeto tem como objetivo consolidar **dados financeiros, indicadores setoriais e notícias de mercado**
+em uma plataforma única de análise estratégica.
 
-def safe_mean(col):
-    return df_filtro[col].dropna().mean() if col in df_filtro else 0
+A aplicação permite:
 
-col1.metric("💰 Market Cap Médio", f"{safe_mean('Market Cap'):,.0f}")
-col2.metric("📈 ROE Médio", f"{safe_mean('ROE'):.2%}")
-col3.metric("🧮 Margem EBITDA", f"{safe_mean('Margem EBITDA'):.2%}")
-col4.metric("🏦 Liquidez Corrente", f"{safe_mean('Liquidez Corrente'):.2f}")
-col5.metric("⚠️ Endividamento", f"{safe_mean('Endividamento'):.2f}")
-
-# -----------------------
-# Ranking de Empresas
-# -----------------------
-st.subheader("🏆 Ranking de Empresas")
-
-ranking_col = st.selectbox(
-    "Ordenar por:",
-    [ "ROE", "Margem EBITDA", "Liquidez Corrente"]
-)
-
-ranking = (
-    df_filtro[["Empresa", "Setor", ranking_col]]
-    .dropna()
-    .sort_values(by=ranking_col, ascending=False)
-)
-
-st.dataframe(ranking, use_container_width=True)
+- Monitorar a evolução financeira das empresas
+- Comparar empresas dentro do mesmo setor
+- Avaliar posição competitiva relativa ao mercado
+- Identificar tendências de crescimento e rentabilidade
+- Gerar insights quantitativos para suporte à tomada de decisão
+""")
 
 # -----------------------
-# Gráficos
+# VISÃO GERAL DOS DADOS
 # -----------------------
-st.subheader("📊 Visualização")
+st.header("Base de dados")
 
-grafico_col = st.selectbox(
-    "Indicador para gráfico:",
-    ["ROE", "Margem EBITDA", "Liquidez Corrente"]
-)
+col1, col2, col3 = st.columns(3)
 
-chart_df = (
-    df_filtro[["Empresa", grafico_col]]
-    .dropna()
-    .sort_values(by=grafico_col, ascending=False)
-)
-
-st.bar_chart(chart_df.set_index("Empresa"))
+col1.metric("Empresas monitoradas", df["empresa"].nunique())
+col2.metric("Setores", df["setor"].nunique())
+col3.metric("Observações históricas", len(df))
 
 # -----------------------
-# Notícias das Empresas
+# ABAS DO SISTEMA
 # -----------------------
-st.subheader("Últimas Notícias")
+st.header("Navegação da plataforma")
 
-empresas_selecionadas = (
-    empresas if empresas else df_filtro["Empresa"].dropna().unique().tolist()
-)
+st.markdown("""
+A plataforma está organizada nas seguintes páginas:
+            
+### 📈 Monitoramento do Setor
+- Tendências agregadas por setor
+- Rankings automáticos
+- Indicadores médios de mercado
+            
+### 📊 Análise da Empresa
+- Scorecard financeiro automático
+- Radar comparativo com o setor
+- Indicadores de rentabilidade, liquidez e endividamento
+- Notícias recentes relacionadas à empresa
 
-if not empresas_selecionadas:
-    st.info("Selecione ao menos uma empresa para visualizar notícias.")
-else:
-    for empresa in empresas_selecionadas[:5]:
-        st.markdown(f"### 🏢 {empresa}")
+### ⚖️ Comparação de Empresas
+- Comparação entre duas empresas
+- Comparação da mesma empresa em anos diferentes (ex: 2023 vs 2024)
+- Radar comparativo de indicadores financeiros
 
-        try:
-            noticias = get_news(empresa, limit=5)
 
-            if not noticias:
-                st.caption("Nenhuma notícia encontrada.")
-                continue
+Use o menu lateral para navegar entre as análises.
+""")
 
-            for n in noticias:
-                st.markdown(
-                    f"""
-                    - **[{n['title']}]({n['link']})**  
-                      <small>{n['published']}</small>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-        except Exception as e:
-            st.error(f"Erro ao buscar notícias para {empresa}: {e}")
+st.info("Este projeto é atualizado automaticamente conforme novas divulgações financeiras são disponibilizadas.")
