@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 # -----------------------
 st.set_page_config(page_title="Perfil Estratégico de Mercado", layout="wide")
 
-
 # -----------------------
 # Secrets
 # -----------------------
