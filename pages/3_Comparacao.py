@@ -19,7 +19,6 @@ setores = sorted(df["setor"].dropna().unique())
 setor_sel = st.selectbox("Selecione o setor", setores)
 
 df_setor = df[df["setor"] == setor_sel]
-
 empresas = sorted(df_setor["empresa"].dropna().unique())
 
 col1, col2 = st.columns(2)
@@ -70,28 +69,31 @@ comparacao = pd.DataFrame({
         "Dívida Líq/EBITDA",
         "Endividamento",
         "Margem EBITDA",
-        "ROE"
+        "ROE",
+        "ICJ"
     ],
     f"{empresa_a} ({ano_a})":[
         dados_a["liquidez_corrente"],
         dados_a["divida_liquida_ebitda"],
         dados_a["endividamento"],
         dados_a["margem_ebitda"],
-        dados_a["roe"]
+        dados_a["roe"],
+        dados_a["icj"]
     ],
     f"{empresa_b} ({ano_b})":[
         dados_b["liquidez_corrente"],
         dados_b["divida_liquida_ebitda"],
         dados_b["endividamento"],
         dados_b["margem_ebitda"],
-        dados_b["roe"]
+        dados_b["roe"],
+        dados_b["icj"]
     ]
 })
 
 st.dataframe(comparacao, use_container_width=True)
 
 # ======================
-# Radar setorial comparativo
+# Radar comparativo
 # ======================
 st.subheader("Radar Comparativo (Score Setorial)")
 
@@ -101,7 +103,8 @@ radar = pd.DataFrame({
         "Rentabilidade",
         "Eficiência Operacional",
         "Estrutura de Capital",
-        "Alavancagem"
+        "Alavancagem",
+        "ICJ"
     ]*2,
     "score":[
         normalizar(dados_a["liquidez_corrente"], df_setor["liquidez_corrente"]),
@@ -109,18 +112,20 @@ radar = pd.DataFrame({
         normalizar(dados_a["margem_ebitda"], df_setor["margem_ebitda"]),
         normalizar(dados_a["endividamento"], df_setor["endividamento"], inverter=True),
         normalizar(dados_a["divida_liquida_ebitda"], df_setor["divida_liquida_ebitda"], inverter=True),
+        normalizar(dados_a["icj"], df_setor["icj"]),
 
         normalizar(dados_b["liquidez_corrente"], df_setor["liquidez_corrente"]),
         normalizar(dados_b["roe"], df_setor["roe"]),
         normalizar(dados_b["margem_ebitda"], df_setor["margem_ebitda"]),
         normalizar(dados_b["endividamento"], df_setor["endividamento"], inverter=True),
-        normalizar(dados_b["divida_liquida_ebitda"], df_setor["divida_liquida_ebitda"], inverter=True)
+        normalizar(dados_b["divida_liquida_ebitda"], df_setor["divida_liquida_ebitda"], inverter=True),
+        normalizar(dados_b["icj"], df_setor["icj"])
     ],
     "Empresa":[
         f"{empresa_a} ({ano_a})"
-    ]*5 + [
+    ]*6 + [
         f"{empresa_b} ({ano_b})"
-    ]*5
+    ]*6
 })
 
 fig = px.line_polar(
@@ -128,10 +133,14 @@ fig = px.line_polar(
     r="score",
     theta="categoria",
     color="Empresa",
+    color_discrete_map={
+        f"{empresa_a} ({ano_a})": "#ffc632",
+        f"{empresa_b} ({ano_b})": "#007f3f"
+    },
     line_close=True
 )
 
-fig.update_traces(fill="toself", opacity=0.4)
+fig.update_traces(fill="toself", opacity=0.5)
 fig.update_layout(polar=dict(radialaxis=dict(range=[0,100])))
 
 st.plotly_chart(fig, use_container_width=True)

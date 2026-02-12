@@ -9,31 +9,6 @@ from dotenv import load_dotenv
 # -----------------------
 st.set_page_config(page_title="Perfil Estratégico de Mercado", layout="wide")
 
-def apply_custom_theme():
-    st.markdown(
-        """
-        <style>
-        .stApp {
-            background: linear-gradient(
-                135deg,
-                #006341 0%,
-                #009c3b 30%,
-                #ffdf00 65%,
-                #ffffff 100%
-            );
-        }
-
-        .block-container {
-            background-color: rgba(255, 255, 255, 0.90);
-            padding: 2rem;
-            border-radius: 12px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-apply_custom_theme()
 
 # -----------------------
 # Secrets

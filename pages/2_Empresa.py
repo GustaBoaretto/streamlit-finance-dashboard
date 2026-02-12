@@ -96,7 +96,7 @@ with col_news:
 # ======================
 with col_main:
 
-    st.subheader("Scorecard da Empresa")
+    st.subheader("🚨 Modelos de Tradução de KPIs")
 
     tabela = pd.DataFrame({
         "Indicador":[
@@ -104,14 +104,16 @@ with col_main:
             "Dívida Líq/EBITDA",
             "Endividamento",
             "Margem EBITDA",
-            "ROE"
+            "ROE",
+            "ICJ"
         ],
         "Valor":[
             ultimo["liquidez_corrente"],
             ultimo["divida_liquida_ebitda"],
             ultimo["endividamento"],
             ultimo["margem_ebitda"],
-            ultimo["roe"]
+            ultimo["roe"],
+            ultimo["icj"]
         ]
     })
 
@@ -120,7 +122,8 @@ with col_main:
         semaforo_setorial(ultimo["divida_liquida_ebitda"], df_setor["divida_liquida_ebitda"], inverter=True),
         semaforo_setorial(ultimo["endividamento"], df_setor["endividamento"], inverter=True),
         semaforo_setorial(ultimo["margem_ebitda"], df_setor["margem_ebitda"]),
-        semaforo_setorial(ultimo["roe"], df_setor["roe"])
+        semaforo_setorial(ultimo["roe"], df_setor["roe"]),
+        semaforo_setorial(ultimo["icj"], df_setor["icj"])
     ]
 
     st.dataframe(tabela, use_container_width=True, hide_index=True)
@@ -140,14 +143,13 @@ with col_main:
             "Capacidade de Pagamento"
         ]
     })
-
     radar["Empresa Score"] = [
         normalizar(ultimo["liquidez_corrente"], df_setor["liquidez_corrente"]),
         normalizar(ultimo["roe"], df_setor["roe"]),
         normalizar(ultimo["margem_ebitda"], df_setor["margem_ebitda"]),
         normalizar(ultimo["endividamento"], df_setor["endividamento"], inverter=True),
         normalizar(ultimo["divida_liquida_ebitda"], df_setor["divida_liquida_ebitda"], inverter=True),
-        normalizar(ultimo["liquidez_corrente"], df_setor["liquidez_corrente"])
+        normalizar(ultimo["icj"], df_setor["icj"])
     ]
 
     radar["Mercado Score"] = [
@@ -156,7 +158,7 @@ with col_main:
         normalizar(df_setor["margem_ebitda"].mean(), df_setor["margem_ebitda"]),
         normalizar(df_setor["endividamento"].mean(), df_setor["endividamento"], inverter=True),
         normalizar(df_setor["divida_liquida_ebitda"].mean(), df_setor["divida_liquida_ebitda"], inverter=True),
-        normalizar(df_setor["liquidez_corrente"].mean(), df_setor["liquidez_corrente"])
+        normalizar(df_setor["icj"].mean(), df_setor["icj"])
     ]
 
     # ======================
@@ -201,12 +203,12 @@ with col_main:
         color="grupo",
         line_close=True,
         color_discrete_map={
-            "Empresa Score": "#2f90d6",
-            "Mercado Score": "green"
+            "Empresa Score": "#ffc632",
+            "Mercado Score": "#007f3f"
         }
     )
 
-    fig.update_traces(fill='toself', opacity=0.4)
+    fig.update_traces(fill='toself', opacity=0.5)
     fig.update_layout(polar=dict(radialaxis=dict(range=[0,100])))
 
     st.plotly_chart(fig, use_container_width=True)
