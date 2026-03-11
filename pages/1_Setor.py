@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from utils.db import loadfinancials
 from utils.news import get_news
+from datetime import datetime
 
 st.title("📊 Inteligência por Setor")
 
@@ -45,12 +46,51 @@ col_news, col_main = st.columns([1, 2])
 with col_news:
     st.subheader("📰 Notícias do Setor")
 
-    news = get_news(setor, limit=10)
+    if "news_limit" not in st.session_state:
+        st.session_state.news_limit = 10
 
-    for n in news:
-        st.markdown(f"**[{n['title']}]({n['link']})**")
-        st.caption(n["published"])
+    news = get_news(setor, limit=st.session_state.news_limit)
 
+    # converter e ordenar por data (mais recente primeiro)
+    news_sorted = sorted(
+        news,
+        key=lambda x: datetime.strptime(
+        x["published"],
+        "%a, %d %b %Y %H:%M:%S %Z"
+        ),
+        reverse=True
+    )
+
+    news_html = ""
+
+    for n in news_sorted:
+        news_html += f"""
+        <div style="margin-bottom:15px">
+            <a href="{n['link']}" target="_blank"><b>{n['title']}</b></a><br>
+            <small>{n['published']}</small>
+        </div>
+        <hr>
+        """
+
+    st.markdown(
+        f"""
+        <div style="
+            height:400px;
+            overflow-y:auto;
+            padding-right:10px;
+            border:1px solid rgba(200,200,200,0.2);
+            border-radius:6px;
+            padding:10px;
+        ">
+        {news_html}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if st.button("⬇️ Carregar notícias mais antigas"):
+        st.session_state.news_limit += 10
+        st.rerun()
 # ======================
 # COLUNA DIREITA — Dados
 # ======================
